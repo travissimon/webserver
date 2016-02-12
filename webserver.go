@@ -4,7 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -23,7 +25,7 @@ func FileHandler(w http.ResponseWriter, r *http.Request) {
 
 func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%s Proxy: %s\n", time.Now().UTC().Format(time.RFC3339), r.URL.Path)
-	cl, err := client.NewRemnantClient("localhost:8123", r)
+	cl, err := client.NewRemnantClient(remnantUrl, r)
 	defer cl.EndSpan()
 	if err != nil {
 		fmt.Printf("Error creating remnant client: %s", err.Error())
@@ -41,16 +43,37 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := fmt.Sprintf("Proxy to %s/%s\n", service, path)
-	io.WriteString(w, msg)
-	fmt.Printf(msg)
-	cl.LogDebug(msg)
+	var url = "http://localhost"
+	if service == "strlen" {
+		url += ":8001"
+	}
+
+	destUrl := url + "/" + path
+	fmt.Printf("Calling to %s\n", destUrl)
+	resp, err := cl.Get(destUrl)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error calling %s: %s\n", destUrl, err.Error())
+		return
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error calling %s: %s\n", destUrl, err.Error())
+		return
+	}
+
+	w.Write(body)
 }
+
+var remnantUrl string
 
 func main() {
 	var port = flag.String("port", "8080", "Define what TCP port to bind to")
 	var root = flag.String("root", ".", "Define the root filesystem path")
+	var remnant = flag.String("remnant", "http://localhost:7777/", "")
 	flag.Parse()
+
+	remnantUrl = *remnant
 
 	http.HandleFunc("/proxy/", ProxyHandler)
 
