@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/travissimon/remnant/client"
 )
 
@@ -19,12 +20,14 @@ import (
 var chttp = http.NewServeMux()
 
 func FileHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Webserver: %s\n", time.Now().UTC().Format(time.RFC3339), r.URL.Path)
+	fmt.Printf("%s Webserver: %s\n", time.Now().UTC().Format(time.RFC3339Nano), r.URL.Path)
 	chttp.ServeHTTP(w, r)
 }
 
-func ProxyHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Proxy: %s\n", time.Now().UTC().Format(time.RFC3339), r.URL.Path)
+func ProxyHandler(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	proxyPath := p.ByName("proxypath")[1:]
+	fmt.Printf("%s Proxy: %s\n", time.Now().UTC().Format(time.RFC3339Nano), proxyPath)
+
 	cl, err := client.NewRemnantClient(remnantUrl, r)
 	defer cl.EndSpan()
 	if err != nil {
@@ -35,10 +38,10 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	cl.Span.ParentId = cl.Span.Id
 	w.Header().Set("remnant-trace-id", cl.Span.TraceId)
 
-	serviceAndPath := r.URL.Path[len("/proxy/"):]
-	slashIdx := strings.IndexRune(serviceAndPath, '/')
-	service := serviceAndPath[:slashIdx]
-	path := serviceAndPath[slashIdx+1:]
+	slashIdx := strings.IndexRune(proxyPath, '/')
+	service := proxyPath[:slashIdx]
+	path := proxyPath[slashIdx+1:]
+	fmt.Printf("%s - slash@%d, service: %s, path: %s\n", proxyPath, slashIdx, service, path)
 
 	if service == "" {
 		cl.LogError(fmt.Sprintf("Proxy request with no service path: %s\n", r.URL.Path))
@@ -74,6 +77,19 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 var remnantUrl string
 
+type staticFileServer struct {
+	fileServer http.Handler
+}
+
+func (sfs *staticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+		w.Header().Set("Cache-Control", "public, no-cache")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+	}
+	sfs.fileServer.ServeHTTP(w, r)
+}
+
 func main() {
 	var port = flag.String("port", "8080", "Define what TCP port to bind to")
 	var root = flag.String("root", ".", "Define the root filesystem path")
@@ -82,11 +98,16 @@ func main() {
 
 	remnantUrl = *remnant
 
-	http.HandleFunc("/proxy/", ProxyHandler)
+	// create our own router so that we can add our own headers to static file responses
+	router := httprouter.New()
+	router.HandleMethodNotAllowed = false
 
-	chttp.Handle("/", http.FileServer(http.Dir(*root)))
-	http.HandleFunc("/", FileHandler)
+	router.GET("/proxy/*proxypath", ProxyHandler)
+
+	router.NotFound = &staticFileServer{
+		http.FileServer(http.Dir(*root)),
+	}
 
 	fmt.Printf("Proxying webserver: serving directory '%s' on port :%s\n\n", *root, *port)
-	panic(http.ListenAndServe(":"+*port, nil))
+	panic(http.ListenAndServe(":"+*port, router))
 }
