@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/nytimes/gziphandler"
 	"github.com/travissimon/remnant/client"
 )
 
@@ -104,7 +105,7 @@ func main() {
 	router.GET("/proxy/*proxypath", ProxyHandler)
 
 	router.NotFound = &staticFileServer{
-		http.FileServer(http.Dir(*root)),
+		gziphandler.GzipHandler(http.FileServer(http.Dir(*root))),
 	}
 
 	fmt.Printf("Proxying webserver: serving directory '%s' on port :%s\n\n", *root, *port)
