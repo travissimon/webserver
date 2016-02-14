@@ -26,7 +26,6 @@ func FileHandler(w http.ResponseWriter, r *http.Request) {
 
 func ProxyHandler(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	proxyPath := p.ByName("proxypath")[1:]
-	fmt.Printf("%s Proxy: %s\n", time.Now().UTC().Format(time.RFC3339Nano), proxyPath)
 
 	cl, err := client.NewRemnantClient(remnantUrl, r)
 	defer cl.EndSpan()
