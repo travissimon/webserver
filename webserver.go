@@ -29,8 +29,11 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer cl.EndSpan()
 	if err != nil {
 		fmt.Printf("Error creating remnant client: %s", err.Error())
-		return
 	}
+	// mark this as the originating span
+	cl.Span.TraceId = cl.Span.Id
+	cl.Span.ParentId = cl.Span.Id
+	w.Header().Set("remnant-trace-id", cl.Span.TraceId)
 
 	serviceAndPath := r.URL.Path[len("/proxy/"):]
 	slashIdx := strings.IndexRune(serviceAndPath, '/')
@@ -43,9 +46,12 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ghetto DNS
 	var url = "http://localhost"
 	if service == "strlen" {
 		url += ":8001"
+	} else if service == "uniq" {
+		url += ":8002"
 	}
 
 	destUrl := url + "/" + path
@@ -55,6 +61,7 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(os.Stderr, "Error calling %s: %s\n", destUrl, err.Error())
 		return
 	}
+	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
