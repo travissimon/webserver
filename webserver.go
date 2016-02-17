@@ -41,7 +41,6 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	slashIdx := strings.IndexRune(proxyPath, '/')
 	service := proxyPath[:slashIdx]
 	path := proxyPath[slashIdx+1:]
-	fmt.Printf("%s - slash@%d, service: %s, path: %s\n", proxyPath, slashIdx, service, path)
 
 	if service == "" {
 		cl.LogError(fmt.Sprintf("Proxy request with no service path: %s\n", r.URL.Path))
@@ -108,6 +107,6 @@ func main() {
 		gziphandler.GzipHandler(http.FileServer(http.Dir(*root))),
 	}
 
-	fmt.Printf("Proxying webserver: serving directory '%s' on port :%s\n\n", *root, *port)
+	fmt.Printf("Proxying webserver: serving directory '%s' on port :%s\n", *root, *port)
 	panic(http.ListenAndServe(":"+*port, router))
 }
